@@ -1,0 +1,32 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "^apply_patch$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"<PYTHON>\" \"<REPO>/hooks/jev-hook-demo/jev_judge_hook.py\"",
+            "commandWindows": "\"<PYTHON>\" \"<REPO>/hooks/jev-hook-demo/jev_judge_hook.py\"",
+            "timeout": 30,
+            "statusMessage": "Jev demo: checking rule test coverage",
+            "additionalContextLimit": 1500
+          }
+        ]
+      },
+      {
+        "matcher": "^Bash$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"<PYTHON>\" \"<CODEX_HOME>/skills/jev-explore/scripts/jev_explore_hook.py\"",
+            "commandWindows": "\"<PYTHON>\" \"<CODEX_HOME>/skills/jev-explore/scripts/jev_explore_hook.py\"",
+            "timeout": 5,
+            "statusMessage": "Jev Explore: source reading priorities",
+            "additionalContextLimit": 1200
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,3 @@
+interface:
+  display_name: "Jev Explore"
+  short_description: "Rank source files with Jev before reading"
