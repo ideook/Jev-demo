@@ -1,5 +1,18 @@
 {
   "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"<PYTHON>\" \"<CODEX_HOME>/hooks/jev-skill-pick.py\"",
+            "timeout": 25,
+            "statusMessage": "Jev: selecting a relevant Codex skill",
+            "additionalContextLimit": 600
+          }
+        ]
+      }
+    ],
     "PostToolUse": [
       {
         "matcher": "^apply_patch$",
