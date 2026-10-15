@@ -6,9 +6,10 @@ Version 0.2.0, commit `c59f030032baedb3a3e5acefd3ead19d9dcde84c`, checked on
 2026-10-09. The original project supports Claude Code. This local adapter supports
 Codex's Stop payload and rollout records; it is not an upstream Codex release.
 
-`upstream/belay.mjs` has two small patches: `BELAY_HOME` accepts `JEV_BELAY_HOME`, keeping
+`upstream/belay.mjs` has three small patches: `BELAY_HOME` accepts `JEV_BELAY_HOME`, keeping
 Codex decisions and session guards in `~/.codex/belay`; text caps include the three
-ellipsis characters, strictly preserving the consented 1,500/2,000 character limits.
+ellipsis characters, strictly preserving the consented 1,500/2,000 character limits;
+the default model is pinned to `jev-1.14.0` as of 2026-10-15, with its client fixture updated.
 Upstream judgment, redaction,
 thresholds, guard caps, HTTP retry budget and rendering are retained. Upstream tests
 and MIT license are included.
@@ -30,7 +31,7 @@ cannot be found in the last 16 MiB fail open. Shell writes through unrecognised
 commands may not count as edits; a decision log is advisory evidence, not proof that
 all changes were tested. The adapter's Korean judgments have not been calibrated.
 
-Settings are `threshold: 0.75`, `log: true`, `shadow: true`, model `jev-1.13.0`.
+Settings are `threshold: 0.75`, `log: true`, `shadow: true`, model `jev-1.14.0`.
 The threshold is a probability, corresponding to 75 in the screenshot. Shadow mode
 records would-block decisions and displays a hook message without blocking a turn.
 Network errors fail open. The API budget is 12 seconds within a 20-second Stop hook.

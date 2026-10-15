@@ -338,7 +338,7 @@ def evaluate(event: dict, config: dict, *, dry_run=False) -> dict:
         return {"status": "no_skills", "api_calls": 0}
     if key and any(key in s["name"] or key in s["description"] for s in skills):
         return {"status": "credential_in_catalog", "api_calls": 0}
-    result = pick(prompt, skills, key, config.get("model", "jev-latest"), threshold)
+    result = pick(prompt, skills, key, config.get("model", "jev-1.14.0"), threshold)
     if result["status"] == "selected" and not Path(result["skill"]["path"]).is_file():
         return {"status": "skill_changed", "api_calls": result["api_calls"]}
     return {**result, "skill_count": len(skills)}

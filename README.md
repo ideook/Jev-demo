@@ -14,6 +14,10 @@ Jev / TypeSafe를 시험하는 여러 프로젝트, 설치용 코드, 테스트�
 에이전트의 코드 수정·실험 지침은 루트 [AGENTS.md](AGENTS.md)에 있으며,
 `jev-ultrafast/` 작업에는 해당 폴더의 [AGENTS.md](jev-ultrafast/AGENTS.md)도 적용됩니다.
 
+현재 Jev 기본 모델은 `jev-1.14.0`입니다. 2026-10-15에 저장소와 이 PC의 전역 설치본을
+갱신했습니다. [검증 기록](experiments/jev-1.14-migration-20261015/README.md)에 오프라인 검사,
+실제 API 5회, 기존 Windows 테스트 실패 및 판단 정확도의 확인 한계를 구분해 기록했습니다.
+
 ## 폴더 구성
 
 | Path | Contents |

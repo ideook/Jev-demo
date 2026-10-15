@@ -134,7 +134,7 @@ def build_request() -> tuple[dict, dict[str, str]]:
         }
         for rule_id, description in rules.items()
     }
-    return {"state": state, "model": "jev-latest", "questions": questions}, rules
+    return {"state": state, "model": "jev-1.14.0", "questions": questions}, rules
 
 
 def call_jev(request_body: dict, key: str) -> dict:

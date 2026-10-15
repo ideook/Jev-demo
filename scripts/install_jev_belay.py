@@ -35,7 +35,7 @@ def install(root: Path, node: Path, env_file: Path, allow_prompt_export: bool = 
         dest = target / name
         if dest.exists() and dest.read_bytes() != (SOURCE / name).read_bytes():
             raise ValueError(f"Installed file differs; review before replacement: {dest}")
-    settings = {"threshold": 0.75, "log": True, "shadow": True, "model": "jev-1.13.0", "env_file": str(env_file.resolve()),
+    settings = {"threshold": 0.75, "log": True, "shadow": True, "model": "jev-1.14.0", "env_file": str(env_file.resolve()),
         "allow_prompt_export": allow_prompt_export}
     if (target / "config.json").exists() and json.loads((target / "config.json").read_text()) != settings:
         raise ValueError("Installed settings differ; review before replacement")

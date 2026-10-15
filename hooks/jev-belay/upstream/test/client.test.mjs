@@ -23,12 +23,12 @@ test("the request body is the pinned model, the projected state, and the four qu
   let seen;
   const fetchImpl = async (url, init) => {
     seen = { url, body: JSON.parse(init.body), auth: init.headers.Authorization };
-    return new Response(JSON.stringify({ model: "jev-1.13.0", answers: {}, usage: {} }), { status: 200 });
+    return new Response(JSON.stringify({ model: "jev-1.14.0", answers: {}, usage: {} }), { status: 200 });
   };
   await ask(buildState("t", "m", evidence), QUESTIONS, { env: { JEV_BASE_URL: "http://x", TYPESAFE_API_KEY: "k" }, fetchImpl });
   assert.equal(seen.url, "http://x/v1/systemone");
   assert.equal(seen.auth, "Bearer k");
-  assert.equal(seen.body.model, "jev-1.13.0");
+  assert.equal(seen.body.model, "jev-1.14.0");
   assert.deepEqual(Object.keys(seen.body.state), ["task", "final_message", "run"]);
   assert.equal(Object.keys(seen.body.questions).length, 4);
   assert.equal(seen.body.questions.claims_done.type, "noul");

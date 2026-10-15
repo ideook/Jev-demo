@@ -68,13 +68,13 @@ class ExploreTests(unittest.TestCase):
 
     def test_batches_follow_bytes_and_optional_count_not_twenty(self):
         items = [candidate(f"f{i}.py") for i in range(35)]
-        byte_budget = len(json.dumps(rank.request_for("pay", items[:7], "jev-latest"), ensure_ascii=False).encode("utf-8"))
-        batches = rank.pack_batches("pay", items, "jev-latest", byte_budget, None)
+        byte_budget = len(json.dumps(rank.request_for("pay", items[:7], "jev-1.14.0"), ensure_ascii=False).encode("utf-8"))
+        batches = rank.pack_batches("pay", items, "jev-1.14.0", byte_budget, None)
         self.assertEqual(sum(map(len, batches)), 35)
         self.assertTrue(all(len(batch) <= 7 for batch in batches))
-        counted = rank.pack_batches("pay", items, "jev-latest", 200000, 11)
+        counted = rank.pack_batches("pay", items, "jev-1.14.0", 200000, 11)
         self.assertEqual(list(map(len, counted)), [11, 11, 11, 2])
-        self.assertEqual(len(rank.pack_batches("pay", items, "jev-latest", 200000, None)), 1)
+        self.assertEqual(len(rank.pack_batches("pay", items, "jev-1.14.0", 200000, None)), 1)
 
     def test_scores_normalized_and_invalid_responses_rejected(self):
         self.assertEqual(rank.parse_answers(answer(), [candidate()])[0]["score"], 1)
@@ -88,7 +88,7 @@ class ExploreTests(unittest.TestCase):
 
     def test_api_failure_is_not_a_score_and_hides_response_body(self):
         with patch.object(rank.urllib.request, "urlopen", side_effect=urllib.error.HTTPError("url", 401, "secret-value", {}, None)):
-            result = rank.evaluate_batch("pay", [candidate()], "secret-value", "jev-latest", 1)
+            result = rank.evaluate_batch("pay", [candidate()], "secret-value", "jev-1.14.0", 1)
         self.assertEqual(result["status"], "failed")
         self.assertNotIn("rows", result)
         self.assertNotIn("secret-value", json.dumps(result))
@@ -96,7 +96,7 @@ class ExploreTests(unittest.TestCase):
 
     def test_rate_limit_retry_is_bounded(self):
         with patch.object(rank.urllib.request, "urlopen", side_effect=urllib.error.HTTPError("url", 429, "rate", {}, None)) as api, patch.object(rank.time, "sleep"):
-            result = rank.evaluate_batch("pay", [candidate()], "secret", "jev-latest", 1)
+            result = rank.evaluate_batch("pay", [candidate()], "secret", "jev-1.14.0", 1)
         self.assertEqual(api.call_count, 2)
         self.assertEqual(result["status"], "failed")
 

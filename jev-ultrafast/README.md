@@ -2,6 +2,10 @@
 
 # Jev Ultrafast ⚡
 
+Local model update (2026-10-15): the TypeSafe default, environment example and UI
+label use `jev-1.14.0`. Historical upstream measurements below retain their original
+model versions. See the [local verification report](../experiments/jev-1.14-migration-20261015/README.md).
+
 > [!IMPORTANT]
 > **The Browser Use Cloud waitlist is open.** Get early access to ultrafast browser agents in the cloud.
 > **[Join the waitlist →](https://browser-use.com/ultrafast?utm_source=github&utm_medium=readme&utm_campaign=jev-ultrafast)**

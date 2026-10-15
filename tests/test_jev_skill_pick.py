@@ -61,7 +61,7 @@ class PickerTests(unittest.TestCase):
     def test_none_and_low_confidence_add_no_context(self):
         for choice, confidence, status in [("none", 1, "no_match"), ("skill_1", 0.799, "uncertain")]:
             with self.subTest(status=status), patch.object(picker, "call_jev", return_value=response(self.skills, choice, confidence)):
-                result = picker.pick("request", self.skills, "fake-key", "jev-latest", 0.8)
+                result = picker.pick("request", self.skills, "fake-key", "jev-1.14.0", 0.8)
             self.assertEqual(result["status"], status)
             self.assertEqual(picker.hook_output(result), {})
 
@@ -138,11 +138,11 @@ class PickerTests(unittest.TestCase):
 
     def test_large_catalog_preserves_every_candidate_and_rechecks_finalists(self):
         skills = [{**self.skills[0], "id": f"skill_{i}", "name": f"skill-{i}"} for i in range(1, 256)]
-        groups = picker.batches("request", skills, "jev-latest")
+        groups = picker.batches("request", skills, "jev-1.14.0")
         self.assertEqual([len(g) for g in groups], [254, 1])
         self.assertEqual([s for group in groups for s in group], skills)
         with patch.object(picker, "call_jev", side_effect=[response(groups[0]), response(groups[1], "skill_255"), response([skills[0], skills[-1]], "skill_255")]) as api:
-            result = picker.pick("request", skills, "fake-key", "jev-latest", 0.8)
+            result = picker.pick("request", skills, "fake-key", "jev-1.14.0", 0.8)
         self.assertEqual(result["skill"]["id"], "skill_255")
         self.assertEqual(api.call_count, 3)
 

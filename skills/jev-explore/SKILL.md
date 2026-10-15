@@ -7,7 +7,9 @@ description: Find where a feature, rule, or behavior is implemented in a codebas
 
 Locate the code with a small reading budget: local keyword search, Jev relevance ranking, then targeted reads.
 
-Run the bundled script from the target repository's root. Use the current user's question as the query and provide a few code identifiers or English feature terms with repeated `--keyword` when the wording differs from the code (including Korean questions).
+Run the bundled script from the target repository's root. Write the query directly in concise English from the user's intent, including when the user asks in Korean. Preserve the requested scope, exclusions, and conditions. Do not add a translation tool or API call.
+
+Keep code identifiers, paths, and exact UI labels or quoted search text unchanged, even when they contain Korean. Provide a few code identifiers or English feature terms with repeated `--keyword`; include original-language terms when needed to find matching source. Source excerpts stay unchanged. Answer the user in their preferred language.
 
 ```powershell
 python "<this-skill>/scripts/jev_rank.py" "Where do employees see their pay?" --root . --keyword payroll --keyword payslip --top 5

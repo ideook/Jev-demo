@@ -15,7 +15,7 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
 export const BELAY_HOME = process.env.JEV_BELAY_HOME || join(homedir(), ".claude", "belay");
-export const MODEL = process.env.JEV_MODEL || "jev-1.13.0";
+export const MODEL = process.env.JEV_MODEL || "jev-1.14.0";
 
 /**
  * Whether this module is the command being run, rather than an import.

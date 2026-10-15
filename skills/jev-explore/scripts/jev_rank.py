@@ -293,7 +293,7 @@ def main() -> int:
     parser.add_argument("--root", type=Path, default=Path.cwd())
     parser.add_argument("--keyword", action="append", default=[])
     parser.add_argument("--env-file", type=Path)
-    parser.add_argument("--model", default="jev-latest")
+    parser.add_argument("--model", default="jev-1.14.0")
     parser.add_argument("--top", type=int, default=5)
     parser.add_argument("--max-candidates", type=int, default=100)
     parser.add_argument("--snippet-chars", type=int, default=5000)

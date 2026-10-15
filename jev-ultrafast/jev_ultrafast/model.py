@@ -105,7 +105,7 @@ def choose(state, goal, history):
             "instructions": {"goal": goal, "operation": operation, "rules": [NEXT_ACTION, TARGET]},
         }
     body = {
-        "model": os.environ.get("TYPESAFE_MODEL", "jev-latest"),
+        "model": os.environ.get("TYPESAFE_MODEL", "jev-1.14.0"),
         "state": {
             "page": {k: state[k] for k in ("url", "title", "text")},
             "elements": elements,

@@ -31,7 +31,7 @@ def register(codex_root: Path, env_file: Path | None = None, allow_prompt_export
     matching = [g for g in groups if any(str(script) in h.get("command", "") for h in g.get("hooks", []))]
     if len(matching) > 1 or matching and matching[0] != definition:
         raise ValueError("A conflicting Jev skill picker hook is already registered")
-    local = {"model": "jev-latest", "min_confidence": 0.8, "codex_command": shutil.which("codex") or "codex",
+    local = {"model": "jev-1.14.0", "min_confidence": 0.8, "codex_command": shutil.which("codex") or "codex",
         "allow_prompt_export": allow_prompt_export}
     if env_file:
         local["env_file"] = str(env_file.resolve())

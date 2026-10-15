@@ -9,7 +9,7 @@ const DIRECTORY = dirname(fileURLToPath(import.meta.url));
 const ROOT = process.env.JEV_BELAY_HOME || join(homedir(), ".codex", "belay");
 process.env.JEV_BELAY_HOME = ROOT;
 const core = await import("./upstream/belay.mjs");
-export const DEFAULTS = { threshold: 0.75, log: true, shadow: true, model: "jev-1.13.0", allow_prompt_export: false,
+export const DEFAULTS = { threshold: 0.75, log: true, shadow: true, model: "jev-1.14.0", allow_prompt_export: false,
   env_file: join(homedir(), ".config", "typesafe", "env") };
 
 export function settings() {
