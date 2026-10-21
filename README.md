@@ -28,6 +28,8 @@ Jev / TypeSafe를 시험하는 여러 프로젝트, 설치용 코드, 테스트�
 | `hooks/hooks.example.json` | Hook registration template with portable path placeholders |
 | `hooks/jev-skill-pick/` | UserPromptSubmit hook: Jev recommends one enabled Codex skill, or none |
 | `hooks/jev-belay/` | Codex Stop adapter, completion-check tests, and vendored upstream Jev Belay source |
+| `hooks/north-star/`, `skills/north-star/` | Thread-local source-backed goals and conditional Jev continuity/report checks |
+| `experiments/north-star/` | Reusable continuity evaluation cases and installation/verification results |
 | `scripts/` | Skill installation, hook registration, and a synthetic 35-file exploration fixture generator |
 | `tests/` | Offline contracts for ranking, credential handling, response validation, and hook scope |
 | `jev-ultrafast/` | Browser agent source, inspector, examples, tests, and upstream documentation |
@@ -47,6 +49,7 @@ Jev / TypeSafe를 시험하는 여러 프로젝트, 설치용 코드, 테스트�
 ```sh
 python3 scripts/register_jev_skill_pick.py --codex-home .runtime/experiments/skill-pick/codex-home
 python3 scripts/install_jev_belay.py --codex-home .runtime/experiments/belay/codex-home
+python3 scripts/install_north_star.py --codex-home .runtime/experiments/north-star/codex-home
 ```
 
 위 명령은 샌드박스에 설치 파일을 준비하며 외부 평가 전송은 기본적으로 비활성화됩니다.
@@ -70,6 +73,9 @@ python3 scripts/install_jev_belay.py --codex-home .runtime/experiments/belay/cod
 OS별 차이는 필요한 부분만 분리하고, 변경 시 두 환경의 동작을 확인합니다. 실행하지 못한 환경은 미검증으로 기록합니다.
 
 ## Skills and hooks
+
+North Star의 목표 계층·주제 전환·보고 누락 검사와 검증 한계는
+[실험 기록](experiments/north-star/README.md)을 참고하세요.
 
 Use Python 3.12+ and install [ripgrep](https://github.com/BurntSushi/ripgrep). The skills and hook scripts use the Python standard library.
 
