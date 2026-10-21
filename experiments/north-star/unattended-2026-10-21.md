@@ -124,9 +124,10 @@ an arbitrary successful process fulfilled its human goal. Codex must still
 review actual scope and effects. The test's independent final assertions verify
 the fixture result separately from Jev's judgment and the recovery marker.
 
-The Windows inheritance fix applies to newly created ledgers. An older protected
-ledger may still require host permission repair for sandboxed CLI maintenance;
-the experiment does not rewrite existing private-directory ACLs.
+At the time of this experiment, the Windows inheritance fix applied only to new
+ledgers. The [legacy ACL follow-up](legacy-acl-2026-10-21.md) subsequently added
+automatic existing-ledger repair, migrated the global installation and verified
+native goal preservation and pending recovery closure after resuming old threads.
 
 The existing Jev Belay hook remains in its prior shadow mode. It emitted a
 "no tests ran" warning even when native command events showed passing tests.

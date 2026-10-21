@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 from contextlib import contextmanager
 import copy
 import errno
@@ -133,15 +134,116 @@ def initial(sid):
             "pending_report": None, "checkpoint": None}
 
 
+def reject_reparse(path):
+    # Resolve only after checking every component, including Windows junctions.
+    path = Path(path).absolute()
+    for item in (path, *path.parents) if os.name == "nt" else (path,):
+        if item.exists() or item.is_symlink():
+            info = item.lstat()
+            if item.is_symlink() or getattr(info, "st_file_attributes", 0) & 0x400:
+                raise Invalid("reparse_state_path")
+    return path
+
+
+def windows_descriptor(path):
+    import ctypes
+    from ctypes import wintypes
+    api = ctypes.WinDLL("advapi32", use_last_error=True)
+    api.GetFileSecurityW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, ctypes.c_void_p,
+                                    wintypes.DWORD, ctypes.POINTER(wintypes.DWORD)]
+    api.GetFileSecurityW.restype = wintypes.BOOL
+    api.GetSecurityDescriptorControl.argtypes = [ctypes.c_void_p, ctypes.POINTER(wintypes.WORD),
+                                                ctypes.POINTER(wintypes.DWORD)]
+    api.GetSecurityDescriptorControl.restype = wintypes.BOOL
+    needed = wintypes.DWORD()
+    api.GetFileSecurityW(str(path), 7, None, 0, ctypes.byref(needed))
+    if not needed.value:
+        raise ctypes.WinError(ctypes.get_last_error())
+    descriptor = ctypes.create_string_buffer(needed.value)
+    if not api.GetFileSecurityW(str(path), 7, descriptor, needed.value, ctypes.byref(needed)):
+        raise ctypes.WinError(ctypes.get_last_error())
+    control, revision = wintypes.WORD(), wintypes.DWORD()
+    if not api.GetSecurityDescriptorControl(descriptor, ctypes.byref(control), ctypes.byref(revision)):
+        raise ctypes.WinError(ctypes.get_last_error())
+    return descriptor, bool(control.value & 0x1000)
+
+
+def inherit_windows_acl(path, descriptor):
+    import ctypes
+    from ctypes import wintypes
+    api = ctypes.WinDLL("advapi32", use_last_error=True)
+    api.GetSecurityDescriptorDacl.argtypes = [ctypes.c_void_p, ctypes.POINTER(wintypes.BOOL),
+                                            ctypes.POINTER(ctypes.c_void_p), ctypes.POINTER(wintypes.BOOL)]
+    api.GetSecurityDescriptorDacl.restype = wintypes.BOOL
+    api.SetNamedSecurityInfoW.argtypes = [wintypes.LPWSTR, wintypes.DWORD, wintypes.DWORD,
+                                        ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p]
+    api.SetNamedSecurityInfoW.restype = wintypes.DWORD
+    present, defaulted, dacl = wintypes.BOOL(), wintypes.BOOL(), ctypes.c_void_p()
+    if not api.GetSecurityDescriptorDacl(descriptor, ctypes.byref(present), ctypes.byref(dacl), ctypes.byref(defaulted)):
+        raise ctypes.WinError(ctypes.get_last_error())
+    if not present.value or not dacl.value:
+        raise Invalid("missing_state_dacl")
+    # Keep explicit ACEs/owner; restore only inheritance from the existing parent.
+    error = api.SetNamedSecurityInfoW(str(path), 1, 4 | 0x20000000, None, None, dacl, None)
+    if error:
+        raise ctypes.WinError(error)
+    if windows_descriptor(path)[1]:
+        raise Invalid("state_acl_still_protected")
+
+
+def repair_state_acls(root, sid=None):
+    if os.name != "nt":
+        return {"repaired": 0, "backups": []}
+    root = reject_reparse(root)
+    threads = reject_reparse(root / "threads")
+    selected = reject_reparse(threads / thread_id(sid)) if sid else threads
+    # A parent ACL update propagates. Preflight its entire subtree before writing.
+    parents = [p for p in (root, threads) if p.exists()]
+    descriptors = {p: windows_descriptor(p) for p in parents}
+    scan = next((p for p in parents if descriptors[p][1]), selected)
+    entries = []
+    def denied(error):
+        raise error
+    if scan.exists():
+        for directory, directories, files in os.walk(scan, followlinks=False, onerror=denied):
+            for p in [Path(directory), *[Path(directory) / n for n in directories + files]]:
+                reject_reparse(p)
+                entries.append(p)
+    targets = {p for p in entries if p == root or p == threads or p.is_relative_to(selected)}
+    targets.update(parents)
+    ordered = sorted(targets, key=lambda p: (len(p.parts), str(p)))
+    pending = []
+    for p in ordered:
+        descriptor, protected = descriptors.get(p) or windows_descriptor(p)
+        if protected:
+            pending.append((p, descriptor))
+    backups = []
+    # Save every original protected DACL before propagation can alter a child.
+    for p, descriptor in pending:
+        record = {"relative_path": p.relative_to(root).as_posix(),
+                  "security_descriptor_base64": base64.b64encode(descriptor.raw).decode("ascii")}
+        backup = root / "acl-backups" / (digest(record) + ".json")
+        reject_reparse(backup)
+        if not backup.exists():
+            atomic(backup, record)
+        elif json.loads(backup.read_bytes()) != record:
+            raise Invalid("state_acl_backup_conflict")
+        backups.append(backup.relative_to(root).as_posix())
+    for p, descriptor in pending:
+        reject_reparse(p)
+        inherit_windows_acl(p, descriptor)
+    return {"repaired": len(pending), "backups": backups}
+
+
 class Store:
     def __init__(self, root, sid):
-        self.root = Path(root).resolve()
+        self.root = reject_reparse(root).resolve()
         self.sid = thread_id(sid)
         self.directory = self.root / "threads" / self.sid
         for p in (self.root / "threads", self.directory):
-            if p.is_symlink():
-                raise Invalid("symlink_state")
+            reject_reparse(p)
         self.directory.mkdir(parents=True, exist_ok=True, mode=DIRECTORY_MODE)
+        repair_state_acls(self.root, self.sid)
         self.path = self.directory / "state.json"
 
     def read(self):

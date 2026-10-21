@@ -3,6 +3,7 @@ import argparse
 import base64
 from datetime import datetime, timezone
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -99,6 +100,10 @@ def install(root, allow_export=False, preserve_config=False):
         settings.update(allow_export=allow_export, mode="conditional", automatic_goals=True, model="jev-1.14.0",
                         env_file=str(Path.home() / ".config/typesafe/env"),
                         transcript_roots=[str(root / "sessions"), str(root / "archived_sessions")])
+    spec = importlib.util.spec_from_file_location("north_star_install", REPO / "hooks/north-star/north_star.py")
+    core = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(core)
+    acl_migration = core.repair_state_acls(root / "north-star")
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
     backup = root / "north-star/backups" / stamp
     backup.mkdir(parents=True, mode=0o700)
@@ -110,7 +115,7 @@ def install(root, allow_export=False, preserve_config=False):
             dest.chmod(0o600)
     for target, source in SOURCES.items():
         p = root / target
-        p.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        p.parent.mkdir(parents=True, exist_ok=True, mode=core.DIRECTORY_MODE)
         p.write_bytes((REPO / source).read_bytes())
         p.chmod(0o600)
     if not preserve_config:
@@ -122,6 +127,7 @@ def install(root, allow_export=False, preserve_config=False):
     receipt = {"installed_at": stamp, "backup": str(backup), "hooks": defs,
                "files_sha256": {x: sha(root / x) for x in SOURCES},
                "allow_export": settings.get("allow_export", False), "mode": settings.get("mode", "conditional"),
+               "state_acl_migration": acl_migration,
                "config_preserved": preserve_config, "trust_review_required": True}
     manifest_path.write_text(json.dumps(receipt, indent=2) + "\n", encoding="utf-8")
     manifest_path.chmod(0o600)

@@ -4,6 +4,18 @@ Adapted from https://github.com/dolevhayut/north-star, commit `467742606738df988
 
 Local changes: Codex native hooks; thread-scoped source references and versioned goal graph; six typed relation, evidence, reminder, relevant report-omission, report-scope and contradiction checks; conditional reminders; no periodic goal recital or mandatory recovery approval. The original Claude hook examples are reference material only.
 
+October 21 legacy Windows ACL migration: Store initialization automatically
+enables inheritance on protected North Star state paths before reading an
+existing ledger. Installation also migrates existing ledgers. Explicit ACEs
+and ownership are preserved; permissions come from the existing managed parent,
+without adding accounts or resetting ACLs. Original protected descriptors are
+backed up under `north-star/acl-backups/` before any changes. Reparse points,
+junctions and unreadable subtrees abort migration; source/state bytes, goal
+versions, call budgets and recovery markers are not rewritten. POSIX keeps its
+existing permissions. See the Windows
+[SetNamedSecurityInfo documentation](https://learn.microsoft.com/en-us/windows/win32/api/aclapi/nf-aclapi-setnamedsecurityinfow)
+for inheritance propagation.
+
 October 21 automatic lifecycle: `automatic.py` captures the complete first real
 human prompt in a private source journal before any API call, creates a literal
 goal, and supplies silent skill context. PostToolUse reviews the latest assistant
