@@ -77,7 +77,8 @@ async function doctor(live) {
   let registered = false;
   try {
     const hooks = JSON.parse(readFileSync(join(homedir(), ".codex", "hooks.json"), "utf8"));
-    registered = hooks.hooks?.Stop?.some((group) => group.hooks?.some((h) => h.command?.includes(join(DIRECTORY, "codex.mjs")))) === true;
+    const script = join(DIRECTORY, "codex.mjs").replaceAll("\\", "/");
+    registered = hooks.hooks?.Stop?.some((group) => group.hooks?.some((h) => h.command?.replaceAll("\\", "/").includes(script))) === true;
   } catch { /* Report false below. */ }
   const report = { version: "0.2.0", upstream_commit: "c59f030032baedb3a3e5acefd3ead19d9dcde84c", host: "Codex",
     node: process.versions.node, key_present: Boolean(auth.key), key_source: auth.source,

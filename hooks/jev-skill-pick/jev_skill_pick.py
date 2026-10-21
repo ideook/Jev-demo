@@ -91,7 +91,7 @@ def implicit_allowed(path: Path) -> bool:
         return True
     if policy.stat().st_size > 32_768:
         return False
-    return not re.search(r"(?m)^\s*allow_implicit_invocation:\s*false\s*(?:#.*)?$", policy.read_text())
+    return not re.search(r"(?m)^\s*allow_implicit_invocation:\s*false\s*(?:#.*)?$", policy.read_text(encoding="utf-8-sig"))
 
 
 def normalize_skills(rows: list[dict]) -> list[dict]:
@@ -366,7 +366,7 @@ def main() -> int:
     args = parser.parse_args()
     result = {"status": "unavailable"}
     try:
-        config = json.loads(args.config.read_text()) if args.config.is_file() else {}
+        config = json.loads(args.config.read_text(encoding="utf-8-sig")) if args.config.is_file() else {}
         if args.check is not None:
             event = {"hook_event_name": "UserPromptSubmit", "prompt": args.check, "cwd": str(Path.cwd())}
         else:

@@ -64,6 +64,11 @@ python3 scripts/install_jev_belay.py --codex-home .runtime/experiments/belay/cod
 결과 파일 경로 / 한계 / 다음 확인:
 ```
 
+## 환경 호환성
+
+훅·스킬·설치 스크립트는 Windows와 macOS 모두에서 호환되도록 개발합니다.
+OS별 차이는 필요한 부분만 분리하고, 변경 시 두 환경의 동작을 확인합니다. 실행하지 못한 환경은 미검증으로 기록합니다.
+
 ## Skills and hooks
 
 Use Python 3.12+ and install [ripgrep](https://github.com/BurntSushi/ripgrep). The skills and hook scripts use the Python standard library.
@@ -117,6 +122,9 @@ other projects and chats can use the same key:
 ```sh
 python3 scripts/register_jev_skill_pick.py --env-file ~/.config/typesafe/env
 ```
+
+On Windows, use `python` instead of `python3`. The installer generates a Windows
+command with UTF-8 input/output; use its generated `commandWindows` value in manual templates.
 
 On macOS, keep `export TYPESAFE_API_KEY='...'` in `~/.config/typesafe/env` with
 permissions `600`, inside a directory with permissions `700`. Source this file

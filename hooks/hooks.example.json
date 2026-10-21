@@ -5,7 +5,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"<PYTHON>\" \"<CODEX_HOME>/hooks/jev-skill-pick.py\"",
+            "command": "\"<PYTHON>\" -X utf8 \"<CODEX_HOME>/hooks/jev-skill-pick.py\"",
+            "commandWindows": "powershell.exe -NoLogo -NoProfile -NonInteractive -EncodedCommand <UTF16LE_BASE64_FROM_INSTALLER>",
             "timeout": 25,
             "statusMessage": "Jev: selecting a relevant Codex skill",
             "additionalContextLimit": 600

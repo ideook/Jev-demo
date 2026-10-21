@@ -5,6 +5,7 @@ import io
 import json
 import os
 from pathlib import Path
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -54,7 +55,7 @@ class PickerTests(unittest.TestCase):
         self.assertIn("none", payload["questions"]["skill"]["criteria"])
         output = picker.hook_output(result)["hookSpecificOutput"]
         self.assertEqual(output["hookEventName"], "UserPromptSubmit")
-        self.assertIn(str(self.file), output["additionalContext"])
+        self.assertIn(json.dumps(str(self.file), ensure_ascii=False), output["additionalContext"])
         self.assertNotIn("fake-key", json.dumps(output))
         self.assertNotIn("decision", output)
 
@@ -121,6 +122,12 @@ class PickerTests(unittest.TestCase):
         (self.root / "agents/openai.yaml").write_text("policy:\n  allow_implicit_invocation: false\n")
         self.assertEqual(picker.normalize_skills([row]), [])
 
+    def test_utf8_policy_with_bom_and_korean_comment_is_respected(self):
+        (self.root / "agents").mkdir()
+        (self.root / "agents/openai.yaml").write_text(
+            "# 자동 선택 제외\npolicy:\n  allow_implicit_invocation: false\n", encoding="utf-8-sig")
+        self.assertEqual(picker.normalize_skills([{**self.skills[0], "enabled": True}]), [])
+
     def test_native_catalog_includes_only_enabled_installed_plugins(self):
         responses = [{}, {"data": [{"skills": [{**self.skills[0], "enabled": True}], "errors": []}]},
             {"marketplaces": [{"name": "personal", "path": "/tmp/marketplace.json", "plugins": [
@@ -168,6 +175,14 @@ class PickerTests(unittest.TestCase):
         result = subprocess.run([sys.executable, str(ROOT / "hooks/jev-skill-pick/jev_skill_pick.py"), "--config", str(config)], input=json.dumps(self.event), capture_output=True, text=True)
         self.assertEqual((result.returncode, result.stdout, result.stderr), (0, "", ""))
 
+    def test_diagnostics_read_utf8_bom_settings_without_a_paid_call(self):
+        config = self.root / "설정.json"
+        config.write_text(json.dumps({"env_file": "한글 경로"}, ensure_ascii=False), encoding="utf-8-sig")
+        result = subprocess.run([sys.executable, "-X", "utf8", str(ROOT / "hooks/jev-skill-pick/jev_skill_pick.py"),
+            "--config", str(config), "--check", "/hooks"], capture_output=True, text=True, encoding="utf-8")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout)["status"], "explicit_command")
+
     def test_provider_failure_never_leaks_error_or_blocks_prompt(self):
         with patch.object(picker, "evaluate", side_effect=OSError("fake-key and private prompt")), patch.object(sys, "argv", ["picker"]), patch.object(sys, "stdin", Mock(buffer=io.BytesIO(json.dumps(self.event).encode()))), patch("sys.stdout", new_callable=io.StringIO) as output:
             self.assertEqual(picker.main(), 0)
@@ -188,6 +203,51 @@ class RegistrationTests(unittest.TestCase):
             self.assertEqual(updated["hooks"]["Stop"], old["hooks"]["Stop"])
             self.assertEqual(len(updated["hooks"]["UserPromptSubmit"]), 1)
             self.assertEqual(len(list(root.glob("hooks.json.before-*"))), 1)
+
+    def test_registration_is_idempotent_with_spaces_korean_and_apostrophes(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp) / "한글 user's space"
+            root.mkdir()
+            installer.register(root)
+            first = (root / "hooks.json").read_bytes()
+            installer.register(root)
+            self.assertEqual((root / "hooks.json").read_bytes(), first)
+            hook = json.loads(first)["hooks"]["UserPromptSubmit"][0]["hooks"][0]
+            self.assertEqual(shlex.split(hook["command"]), [Path(sys.executable).resolve().as_posix(),
+                "-X", "utf8", (root / "hooks/jev-skill-pick.py").as_posix()])
+
+    @unittest.skipUnless(os.name == "nt", "Windows shell integration")
+    def test_windows_registered_command_handles_utf8_stdin_and_paths(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp) / "한글 user's space"
+            root.mkdir()
+            script = root / "echo hook.py"
+            script.write_text("import json, sys\nprint(json.dumps(json.loads(sys.stdin.buffer.read()), ensure_ascii=False))\n",
+                encoding="utf-8")
+            command = installer.hook_definition(script)["hooks"][0]["commandWindows"]
+            payload = {"prompt": "한글 입력", "cwd": str(root)}
+            for shell in ("cmd", "powershell"):
+                with self.subTest(shell=shell):
+                    args = [os.environ.get("COMSPEC", "cmd.exe"), "/d", "/s", "/c", command] if shell == "cmd" else [
+                        "powershell.exe", "-NoLogo", "-NoProfile", "-NonInteractive", "-Command", command]
+                    result = subprocess.run(args, input=json.dumps(payload, ensure_ascii=False),
+                        capture_output=True, text=True, encoding="utf-8", timeout=15)
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertEqual(json.loads(result.stdout), payload)
+                    self.assertEqual(result.stderr, "")
+
+    def test_existing_conflicting_hook_is_not_duplicated_or_replaced(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            script = root / "hooks/jev-skill-pick.py"
+            original = {"hooks": {"UserPromptSubmit": [{"hooks": [{"type": "command",
+                "command": f'"{sys.executable}" "{script.as_posix()}"', "timeout": 99}]}]}}
+            hook_file = root / "hooks.json"
+            hook_file.write_text(json.dumps(original), encoding="utf-8")
+            first = hook_file.read_bytes()
+            with self.assertRaises(ValueError):
+                installer.register(root)
+            self.assertEqual(hook_file.read_bytes(), first)
 
     def test_conflicting_installation_is_not_overwritten(self):
         with tempfile.TemporaryDirectory() as temp:
