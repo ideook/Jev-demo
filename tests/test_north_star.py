@@ -21,6 +21,15 @@ def load(name, path):
     return mod
 
 
+def symlink_or_skip(test, link, target):
+    try:
+        link.symlink_to(target)
+    except OSError as exc:
+        if getattr(exc, "winerror", None) == 1314:
+            test.skipTest("Windows symlink creation permission is unavailable")
+        raise
+
+
 ns = load("north_star", REPO / "hooks/north-star/north_star.py")
 installer = load("install_north_star", REPO / "scripts/install_north_star.py")
 
@@ -58,7 +67,7 @@ class ContinuityTests(unittest.TestCase):
         self.user = self.append("user", "관리용 인터페이스를 구현하고 설치와 상태 조회를 검증해줘.")
         self.result = self.append("assistant", "관리 인터페이스를 구현하고 설치했습니다. 상태 조회 오류를 수정 중입니다.", "commentary")
         self.followup = self.append("user", "상태 조회 오류도 고쳐줘.")
-        self.cfg = {**ns.DEFAULTS, "allow_export": True, "transcript_roots": [str(self.rollout.parent)]}
+        self.cfg = {**ns.DEFAULTS, "automatic_goals": False, "allow_export": True, "transcript_roots": [str(self.rollout.parent)]}
         self.store = ns.Store(self.root / "north-star", self.sid)
         self.node = {"id": "management", "goal": "관리 인터페이스 구현과 설치·상태 조회 검증", "parent": None,
                      "refs": [self.user], "result_refs": [self.result], "status": "active",
@@ -264,6 +273,7 @@ class ContinuityTests(unittest.TestCase):
         self.assertNotIn("synthetic-key", text)
         self.assertNotIn(str(self.rollout), text)
 
+    @unittest.skipIf(os.name == "nt", "POSIX mode bits do not represent Windows ACLs")
     def test_permissions_private(self):
         self.assertEqual(self.store.path.stat().st_mode & 0o777, 0o600)
         self.assertEqual(self.store.directory.stat().st_mode & 0o777, 0o700)
@@ -274,7 +284,7 @@ class ContinuityTests(unittest.TestCase):
 
     def test_symlink_source_rejected(self):
         p = self.rollout.with_name("link.jsonl")
-        p.symlink_to(self.rollout)
+        symlink_or_skip(self, p, self.rollout)
         with self.assertRaisesRegex(ns.Invalid, "path"):
             ns.transcript(p, self.sid, self.cfg["transcript_roots"])
 
@@ -817,7 +827,7 @@ class InstallTests(unittest.TestCase):
     def test_install_refuses_symlink(self):
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)
-            (root / "hooks.json").symlink_to(root / "other.json")
+            symlink_or_skip(self, root / "hooks.json", root / "other.json")
             with self.assertRaisesRegex(ValueError, "symlink"):
                 installer.install(root)
 

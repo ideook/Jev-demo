@@ -98,13 +98,13 @@ class HistoryEvaluationTests(unittest.TestCase):
         self.assertEqual(result["files"][0]["counts"]["incomplete_records"], 1)
 
     def test_recent_cap_dominates_current_cap(self):
-        self.assertTrue(limits.assess("x" * 1200, [{"text": "x" * 1200}])["text_caps_pass"])
-        result = limits.assess("x" * 1201, [{"text": "x" * 1201}])
+        self.assertTrue(limits.assess("가" * 1200, [{"text": "가" * 1200}])["text_caps_pass"])
+        result = limits.assess("가" * 1201, [{"text": "가" * 1201}])
         self.assertEqual(result["blockers"], ["recent_over_1200"])
         self.assertFalse(result["text_caps_pass"])
 
     def test_citation_sensitivity_does_not_change_actual_gate(self):
-        text = "Short answer.\n<oai-mem-citation>" + "x" * 1300
+        text = "Short answer.\n<oai-mem-citation>" + "가" * 1300
         result = limits.assess(text, [{"text": text}])
         self.assertFalse(result["text_caps_pass"])
         self.assertTrue(result["without_citation_caps_pass"])
@@ -120,7 +120,7 @@ class HistoryEvaluationTests(unittest.TestCase):
     def test_future_long_message_cannot_contaminate_earlier_final(self):
         self.transcript([message("Request", "1"),
                          message("Short result", "2", "assistant", "final_answer"),
-                         message("x" * 2001, "3", "assistant", "final_answer")])
+                         message("가" * 2001, "3", "assistant", "final_answer")])
         self.inventory()
         output = self.root / "limits.json"
         limits.replay(self.output / "inventory.json", self.output / "messages.json", output)

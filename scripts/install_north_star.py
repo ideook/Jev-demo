@@ -1,5 +1,6 @@
 """Install North Star's user-scope skill and native hooks, preserving other hooks."""
 import argparse
+import base64
 from datetime import datetime, timezone
 import hashlib
 import json
@@ -12,6 +13,7 @@ import sys
 REPO = Path(__file__).resolve().parent.parent
 SOURCES = {
     "north-star/north_star.py": "hooks/north-star/north_star.py",
+    "north-star/automatic.py": "hooks/north-star/automatic.py",
     "skills/north-star/SKILL.md": "skills/north-star/SKILL.md",
     "skills/north-star/LICENSE": "hooks/north-star/upstream/LICENSE",
     "skills/north-star/UPSTREAM.md": "hooks/north-star/UPSTREAM.md",
@@ -23,11 +25,25 @@ def sha(path):
 
 
 def definitions(root):
-    command = f"{shlex.quote(str(Path(sys.executable).resolve()))} {shlex.quote(str(root / 'north-star/north_star.py'))} --root {shlex.quote(str(root / 'north-star'))} hook"
+    args = [Path(sys.executable).resolve().as_posix(), "-X", "utf8",
+            (root / "north-star/north_star.py").as_posix(), "--root", (root / "north-star").as_posix(), "hook"]
+    command = shlex.join(args)
+    windows_command = None
+    if os.name == "nt":
+        quoted = " ".join("'" + arg.replace("'", "''") + "'" for arg in args)
+        wrapper = (
+            "$ProgressPreference = 'SilentlyContinue'; $utf8 = [System.Text.UTF8Encoding]::new($false); "
+            "[Console]::InputEncoding = $utf8; [Console]::OutputEncoding = $utf8; $OutputEncoding = $utf8; "
+            f"& {quoted}; exit $LASTEXITCODE"
+        )
+        encoded = base64.b64encode(wrapper.encode("utf-16le")).decode("ascii")
+        windows_command = f"powershell.exe -NoLogo -NoProfile -NonInteractive -EncodedCommand {encoded}"
     result = {}
-    for name in ("SessionStart", "UserPromptSubmit", "Stop", "PreCompact", "PostCompact"):
+    for name in ("SessionStart", "UserPromptSubmit", "PostToolUse", "Stop", "PreCompact", "PostCompact"):
         hook = {"type": "command", "command": command, "timeout": 12}
-        if name in ("SessionStart", "UserPromptSubmit"):
+        if windows_command:
+            hook["commandWindows"] = windows_command
+        if name in ("SessionStart", "UserPromptSubmit", "PostToolUse"):
             hook["additionalContextLimit"] = 1800
         group = {"description": "North Star: source-backed task continuity", "hooks": [hook]}
         result[name] = group
@@ -50,18 +66,18 @@ def install(root, allow_export=False, preserve_config=False):
         raise ValueError("Refusing existing temporary hook file")
     if any(not (REPO / source).is_file() for source in SOURCES.values()):
         raise ValueError("Missing installation source")
-    old = json.loads(hook_path.read_text()) if hook_path.exists() else {}
+    old = json.loads(hook_path.read_text(encoding="utf-8-sig")) if hook_path.exists() else {}
     if not isinstance(old, dict) or not isinstance(old.get("hooks", {}), dict):
         raise ValueError("Invalid hooks configuration")
     manifest_path = root / "north-star/installation.json"
-    prior = json.loads(manifest_path.read_text()) if manifest_path.exists() else {}
+    prior = json.loads(manifest_path.read_text(encoding="utf-8-sig")) if manifest_path.exists() else {}
     defs = definitions(root)
     merged = json.loads(json.dumps(old))
     for name, group in defs.items():
         groups = merged.setdefault("hooks", {}).setdefault(name, [])
         if not isinstance(groups, list):
             raise ValueError("Invalid event configuration")
-        matching = [g for g in groups if any("north-star/north_star.py" in h.get("command", "") for h in g.get("hooks", []))]
+        matching = [g for g in groups if any("north-star/north_star.py" in h.get("command", "").replace("\\", "/") for h in g.get("hooks", []))]
         if len(matching) > 1 or (matching and matching[0] not in (group, prior.get("hooks", {}).get(name))):
             raise ValueError("Conflicting North Star hook; preserve and review it")
         if matching:
@@ -73,14 +89,14 @@ def install(root, allow_export=False, preserve_config=False):
         if p.exists() and sha(p) not in (sha(REPO / source), prior.get("files_sha256", {}).get(target)):
             raise ValueError("Local changes in " + target)
     settings_path = root / "north-star/config.json"
-    settings = json.loads(settings_path.read_text()) if settings_path.exists() else {}
+    settings = json.loads(settings_path.read_text(encoding="utf-8-sig")) if settings_path.exists() else {}
     if not isinstance(settings, dict):
         raise ValueError("Invalid existing North Star settings")
     if preserve_config:
         if not settings_path.is_file():
             raise ValueError("Preserve config requires an existing installation")
     else:
-        settings.update(allow_export=allow_export, mode="conditional",
+        settings.update(allow_export=allow_export, mode="conditional", automatic_goals=True, model="jev-1.14.0",
                         env_file=str(Path.home() / ".config/typesafe/env"),
                         transcript_roots=[str(root / "sessions"), str(root / "archived_sessions")])
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
@@ -98,16 +114,16 @@ def install(root, allow_export=False, preserve_config=False):
         p.write_bytes((REPO / source).read_bytes())
         p.chmod(0o600)
     if not preserve_config:
-        settings_path.write_text(json.dumps(settings, indent=2) + "\n")
+        settings_path.write_text(json.dumps(settings, indent=2) + "\n", encoding="utf-8")
         settings_path.chmod(0o600)
-    temporary.write_text(json.dumps(merged, indent=2) + "\n")
+    temporary.write_text(json.dumps(merged, indent=2) + "\n", encoding="utf-8")
     temporary.chmod(0o600)
     temporary.replace(hook_path)
     receipt = {"installed_at": stamp, "backup": str(backup), "hooks": defs,
                "files_sha256": {x: sha(root / x) for x in SOURCES},
                "allow_export": settings.get("allow_export", False), "mode": settings.get("mode", "conditional"),
                "config_preserved": preserve_config, "trust_review_required": True}
-    manifest_path.write_text(json.dumps(receipt, indent=2) + "\n")
+    manifest_path.write_text(json.dumps(receipt, indent=2) + "\n", encoding="utf-8")
     manifest_path.chmod(0o600)
     return receipt
 

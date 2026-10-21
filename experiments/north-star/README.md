@@ -1,5 +1,20 @@
 # North Star + Jev: Codex 작업 연속성
 
+무인 네이티브 세션 후속 검증은 [실행 기록](unattended-2026-10-21.md)에 남겼다.
+Windows 실제 런타임에서 최초 요청 1회·추가 개입 0회로 목표 자동 등록, 주입 이탈 감지,
+실제 테스트와 복구 종료까지 통과했다. 직접 훅 호출 시험과 구분하며,
+전체 Python 205개 통과·3개 스킵과 발견·수정한 네이티브 문제를 함께 기록했다.
+
+2026-10-21 [자동 목표 등록·이탈 복구 개선](automatic-continuity-2026-10-21.md):
+첫 원본 사용자 요청을 명령 없이 저장하고, 모든 로컬 도구의 PostToolUse에서 작업 의도를
+검사한다. 강한 이탈은 같은 턴의 비공개 복구로, 판단 보류·검사 불가는 제한된 로컬
+원문/실행 대조로 연결한다. 3개 프로젝트의 23개 대화를 조사하고 비식별 23사례를
+Jev 1.14로 평가했다. 보류와 실제 탐지, 재생과 실제 자동 실행을 구분한다.
+
+2026-10-21 Windows 후속 수정: `fcntl` import, `O_NOFOLLOW`, 한글 경로·UTF-8 훅 명령과
+상태 파일 교체를 수정했다. [검증 기록](windows-compatibility-2026-10-21.md)에 루트 검사
+176개 통과·3개 스킵, 샌드박스 훅 실행 및 macOS 미검증 범위를 기록했다.
+
 2026-10-20. 긴 작업에서 상위 목표와 하위 작업을 유지하고, 요청하지 않은 이탈이나 최종 보고의 상위 성과 누락이 있을 때만 짧게 복구하도록 구현했다. 실제 Codex 전역 설치와 사용자의 네이티브 Trust 승인까지 완료했다.
 
 후속 [긴 실제 대화 평가](history-evaluation-2026-10-20.md)에서는 10월 8–20일 로그를 분석하고
@@ -23,7 +38,7 @@
 
 - [상태·훅 코드](../../hooks/north-star/north_star.py): 대화별 목표 계층, 원문 참조와 해시, 이전 목표 버전, 완료·남은 작업, CAS, 중복 억제, 제한된 Jev 호출.
 - [Codex 스킬](../../skills/north-star/SKILL.md): 원문에 근거한 목표 정리, 하위 작업·명시적 전환·복귀 처리, 실제 결과를 연결하는 최종 설명.
-- [설치기](../../scripts/install_north_star.py): 다른 훅을 보존하고 사용자 범위 스킬과 SessionStart, UserPromptSubmit, Stop, PreCompact, PostCompact를 설치한다.
+- [설치기](../../scripts/install_north_star.py): 다른 훅을 보존하고 사용자 범위 스킬과 SessionStart, UserPromptSubmit, PostToolUse, Stop, PreCompact, PostCompact를 설치한다.
 - [오프라인 계약 검사](../../tests/test_north_star.py)와 [평가 도구](evaluate.py): 합성 자료와 모의 판단이 기본이다. 실제 API는 별도 `--live`가 필요하다.
 
 Jev는 관계 Choice, 원문 근거 Noul, 상기 필요 Noul, 관련 보고 누락 Noul, 보고 범위 Choice, 성과 부정 Noul을 한 요청에서 독립적으로 판단한다. 목표 문장이나 실행 성공 판정은 만들지 않는다. 코드가 원문·상태를 관리하고 Codex가 의미와 실행 증거를 확인한다.
@@ -32,7 +47,8 @@ Jev는 관계 Choice, 원문 근거 Noul, 상기 필요 Noul, 관련 보고 누�
 
 ## 설치와 검사
 
-Python 3.12 이상, macOS/Linux용이다. 파일 잠금에 `fcntl`을 사용한다.
+Python 3.12 이상, Windows/macOS/Linux 공용이다. Windows는 `msvcrt`, POSIX는
+`fcntl` 잠금을 사용한다. 이번 변경은 Windows에서 실행했고 macOS 실행은 미검증이다.
 
 ```sh
 python3 -m unittest discover -s tests -v

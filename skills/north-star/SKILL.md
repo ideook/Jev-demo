@@ -1,6 +1,6 @@
 ---
 name: north-star
-description: Maintain source-backed goals across long Codex tasks; quietly distinguish subtasks, human pivots, returns, drift and missing parent results in final reports. Use when the North Star hook requests ANCHOR, CHECK or RECOVERY, or when the user loses the task's context.
+description: Automatically maintain source-backed goals during ordinary Codex work. Follow North Star hook context to distinguish subtasks, human pivots, returns, drift and missing results; privately check and recover without waiting for a user command.
 license: MIT
 ---
 
@@ -11,6 +11,60 @@ needs no visible reminder. This skill adapts Dolev Hayut's North Star; see
 `UPSTREAM.md` and `LICENSE`. Hook judgments are advisory, never operating authority.
 
 ## ANCHOR, maintained silently
+
+The native hook saves the first human request as a literal, source-backed goal.
+No slash command, goal question or user-maintained ledger is required. A resumed
+thread can initialize from an original human transcript record. This provisional
+label is not a semantic summary: read the complete source before refining it.
+Update constraints, parent/subtask relations and completed/remaining work at
+meaningful changes using the versioned CLI below. Keep the main goal active
+while fixing a related error; never replace it with the last symptom.
+
+PostToolUse compares the latest assistant intent with the saved human goal.
+Tool arguments, outputs and execution hashes remain local. Review the actual
+completed operation against the original request, especially for a write or
+a change of target: a plausible commentary sentence does not prove alignment.
+When recovery is requested, verify scope locally and resume the already authorized
+task quietly. A later aligned observation plus a successful tool result can close
+the recovery ledger; neither that marker nor Jev proves the entire task complete.
+Stop may request one bounded recovery continuation in the same turn. Respect
+reentrant guards and do not perform a new deployment or other unapproved action.
+
+Native Bash hooks may carry only stdout, with no exit metadata. Never interpret
+printed JSON, "Exit code: 0" or test-success text as a runtime verdict. While
+recovery is pending, run the next already-authorized local check through the
+installed CLI so it records the real child-process exit code (60-second limit):
+
+```sh
+python NORTH_STAR_SCRIPT --root ACTUAL_NORTH_STAR_ROOT verify-execution --thread THREAD_ID --expected-version VERSION --recovery PENDING_OBSERVATION_HASH --receipt FRESH_UUID_HEX --command python -B test_employee_filter.py
+```
+
+Substitute the actual installed script/root and current thread/version/token
+from hook context; create a fresh 32-character UUID hex locally. Replace the
+example check with this task's authorized test/check arguments. The wrapper
+inherits the same sandbox, runs no API request, and leaves failed/unknown checks
+unverified. Its receipt is bound to this recovery, goal and version, expires
+after 120 seconds, and must appear in the actual Bash invocation. The following
+native PostToolUse consumes it only with aligned intent. This is internal skill
+maintenance, never a command the user must supply. Read the actual result before
+claiming recovery; a successful process does not prove its goal was fulfilled.
+
+If Jev remains uncertain after a successful operation, privately compare actual
+effects with the original scope. When verified, update the active node's
+`completed` and `result_refs` using the `recovery.execution_observation.intent_ref`
+already captured by the hook. In the same anchor patch, set `review_recovery` to
+the pending `recovery.observation_hash`. This requires an observed successful
+tool, matching original assistant result source, unchanged goal and current
+anchor version. It records `agent_reviewed_execution`, a Codex review claim,
+not a Jev verdict or proof that the entire parent task is done. Never acknowledge
+an unknown/failed operation or invent the observation.
+
+The hook stores health reasons for missing source/key, clipped evidence, failed
+provider calls and exhausted budgets. Silence during those states is not proof
+of a successful check. A bounded private CHECK request covers uncertainty or
+unavailable evaluation without a new API request. Read original scope and actual
+tool effects once; continue quietly if aligned. Do not call that request a
+detected drift or tell the user to maintain the ledger.
 
 Use the thread id and state path supplied by the native hook. Never use a
 repository-wide `.north-star.md`: another thread in the same directory is separate.
@@ -141,7 +195,11 @@ For a human prompt the relation question chooses continuation, new switch,
 return or insufficient evidence. Assistant drift is only an assistant-work
 category. Combined switch/return probability at least 0.8 can request silent
 graph maintenance even when those two choices split the vote. Check the original
-sources to choose the actual goal; the hook does not change it automatically.
+sources to choose the actual goal. With automatic goals enabled, a supported
+switch/return and target-goal confidence at least 0.8 selects a literal new root
+or a recorded prior root, retaining the previous graph version. This is source
+navigation, never authorization for new operations. Uncertain target selection
+requests private reconciliation instead.
 
 The current message appears once under its 2,000-character limit. Only a complete
 trailing machine citation footer is excluded from assistant text; substantive

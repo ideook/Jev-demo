@@ -4,23 +4,34 @@ from __future__ import annotations
 import argparse
 from contextlib import contextmanager
 import copy
-import fcntl
+import errno
 import hashlib
+import importlib.util
 import json
 import math
 import os
 from pathlib import Path
 import re
 import sys
+import subprocess
 import time
+from types import SimpleNamespace
 import urllib.request
 import uuid
+
+if os.name == "nt":
+    import msvcrt
+else:
+    import fcntl
 
 SCHEMA = 1
 API = "https://api.typesafe.ai/v1/systemone"
 MAX_LINE = 2 * 1024 * 1024
 TAIL_BYTES = 4 * 1024 * 1024
 MAX_STATE_BYTES = 256 * 1024
+# Windows sandbox access is granted through inherited capability ACLs. mode 700
+# creates a protected DACL there and prevents the agent from reading its ledger.
+DIRECTORY_MODE = 0o777 if os.name == "nt" else 0o700
 MARKER = "[North Star continuity]"
 RELATIONS = {
     "on_track": "The current request/work directly advances the active goal.",
@@ -38,7 +49,8 @@ HUMAN_RELATIONS = {
     "insufficient": "The human intent or original goal sources are missing, quoted or too ambiguous to compare reliably.",
 }
 DEFAULTS = {
-    "allow_export": False, "mode": "conditional", "model": "jev-1.13.0",
+    "automatic_goals": True,
+    "allow_export": False, "mode": "conditional", "model": "jev-1.14.0",
     "timeout_seconds": 8, "confidence": 0.8, "evidence_threshold": 0.8,
     "reminder_threshold": 0.8, "omission_threshold": 0.8, "maintenance_confidence": 0.7,
     "report_review_threshold": 0.8,
@@ -50,6 +62,8 @@ DEFAULTS = {
 INJECTED = re.compile(
     r"^(?:# AGENTS\.md instructions|<environment_context>|<INSTRUCTIONS>|"
     r"<external_codex_apps_open_page>|<turn_aborted>|<permissions instructions>|"
+    r"<heartbeat>|<in-app-browser-context|The following is the Codex agent history|"
+    r"<recommended_plugins>|<skills_instructions>|<collaboration_mode>|"
     r"<codex_delegation>|<hook_prompt(?:\s|>)|" + re.escape(MARKER) + r")"
 )
 
@@ -70,17 +84,25 @@ def dump(value):
 
 def atomic(path, value):
     path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    path.parent.mkdir(parents=True, exist_ok=True, mode=DIRECTORY_MODE)
     if path.is_symlink():
         raise Invalid("symlink_destination")
     temp = path.with_name(path.name + "." + uuid.uuid4().hex + ".tmp")
     try:
         fd = os.open(temp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-        with os.fdopen(fd, "w") as f:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as f:
             f.write(dump(value))
             f.flush()
             os.fsync(f.fileno())
-        os.replace(temp, path)
+        for attempt in range(5):
+            try:
+                os.replace(temp, path)
+                break
+            except PermissionError as exc:
+                if os.name != "nt" or exc.winerror not in (5, 32, 33) or attempt == 4:
+                    raise
+                # Windows readers can briefly hold a handle without delete sharing.
+                time.sleep(0.01 * 2 ** attempt)
     finally:
         temp.unlink(missing_ok=True)
 
@@ -89,6 +111,20 @@ def thread_id(value):
     if not isinstance(value, str) or not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9_-]{7,95}", value):
         raise Invalid("invalid_thread_id")
     return value
+
+
+def open_nofollow(path, flags):
+    if path.is_symlink():
+        raise Invalid("symlink_destination")
+    fd = os.open(path, flags | getattr(os, "O_NOFOLLOW", 0), 0o600)
+    try:
+        # Windows lacks O_NOFOLLOW; check the opened file before writing or locking.
+        if path.is_symlink() or not os.path.samestat(os.fstat(fd), path.lstat()):
+            raise Invalid("changed_file_destination")
+        return fd
+    except BaseException:
+        os.close(fd)
+        raise
 
 
 def initial(sid):
@@ -105,7 +141,7 @@ class Store:
         for p in (self.root / "threads", self.directory):
             if p.is_symlink():
                 raise Invalid("symlink_state")
-        self.directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+        self.directory.mkdir(parents=True, exist_ok=True, mode=DIRECTORY_MODE)
         self.path = self.directory / "state.json"
 
     def read(self):
@@ -113,7 +149,7 @@ class Store:
             return initial(self.sid)
         if self.path.is_symlink() or self.path.stat().st_size > MAX_STATE_BYTES:
             raise Invalid("invalid_state_file")
-        d = json.loads(self.path.read_text())
+        d = json.loads(self.path.read_text(encoding="utf-8-sig"))
         if d.get("schema") != SCHEMA or d.get("thread_id") != self.sid:
             raise Invalid("state_identity_mismatch")
         return d
@@ -126,9 +162,17 @@ class Store:
     @contextmanager
     def lock(self):
         path = self.directory / "lock"
-        fd = os.open(path, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+        fd = open_nofollow(path, os.O_RDWR | os.O_CREAT)
         try:
-            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            if os.name == "nt":
+                try:
+                    msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+                except OSError as exc:
+                    if exc.errno in (errno.EACCES, errno.EAGAIN, errno.EDEADLK):
+                        raise BlockingIOError(errno.EAGAIN, "north_star_lock_busy") from exc
+                    raise
+            else:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
             yield
         finally:
             os.close(fd)
@@ -140,8 +184,8 @@ class Store:
             raise Invalid("symlink_audit")
         if p.exists() and p.stat().st_size > 512 * 1024:
             os.replace(p, p.with_suffix(".previous.jsonl"))
-        fd = os.open(p, os.O_WRONLY | os.O_APPEND | os.O_CREAT | os.O_NOFOLLOW, 0o600)
-        with os.fdopen(fd, "a") as f:
+        fd = open_nofollow(p, os.O_WRONLY | os.O_APPEND | os.O_CREAT)
+        with os.fdopen(fd, "a", encoding="utf-8", newline="\n") as f:
             f.write(json.dumps({"time": time.time(), "event": event, **fields}) + "\n")
 
 
@@ -254,6 +298,8 @@ def clean(text, secrets=()):
         if secret:
             text = text.replace(secret, "[secret]")
     text = re.sub(r"```[\s\S]*?(?:```|$)", "[code omitted]", text)
+    text = re.sub(r'(?is)(["\']?(?:ProviderSecrets|HaloInternalApi)["\']?\s*:\s*)\{[^}]*\}', r'\1[secret block]', text)
+    text = re.sub(r'\b(?:[a-fA-F0-9]{32,}|[A-Za-z0-9+/]{40,}={0,2})\b', '[opaque value]', text)
     text = re.sub(r"-----BEGIN [^-]*PRIVATE KEY-----[\s\S]*?(?:-----END [^-]*PRIVATE KEY-----|$)", "[secret]", text)
     text = re.sub(r"(?i)\b(?:Bearer\s+[\w./+=~-]+|(?:sk|rk)_(?:live|test)_[\w]+|sk-[\w-]{12,}|gh[pousr]_[\w]+|github_pat_[\w]+|AKIA[A-Z0-9]{16})", "[secret]", text)
     text = re.sub(r"""(?im)(["']?(?:api[_-]?key|password|token|secret|client_secret|TYPESAFE_API_KEY|JEV_API_KEY)["']?\s*[:=]\s*)["']?[^,\s"']+["']?""", r"\1[secret]", text)
@@ -316,7 +362,7 @@ def report_view(view):
 
 def config(root):
     p = Path(root) / "config.json"
-    d = {**DEFAULTS, **(json.loads(p.read_text()) if p.exists() else {})}
+    d = {**DEFAULTS, **(json.loads(p.read_text(encoding="utf-8-sig")) if p.exists() else {})}
     if d["mode"] not in ("conditional", "shadow", "off"):
         raise Invalid("invalid_mode")
     for name in ("confidence", "evidence_threshold", "reminder_threshold", "omission_threshold", "maintenance_confidence", "report_review_threshold", "contradiction_threshold", "clarification_review_floor"):
@@ -333,7 +379,7 @@ def credentials(env=os.environ, env_file=None):
             return env[k]
     p = Path(env_file or Path.home() / ".config/typesafe/env")
     if p.is_file() and p.stat().st_size < 16384:
-        for line in p.read_text().splitlines():
+        for line in p.read_text(encoding="utf-8-sig").splitlines():
             m = re.fullmatch(r"\s*(?:export\s+)?(?:TYPESAFE_API_KEY|JEV_API_KEY)\s*=\s*(.*?)\s*", line)
             if m:
                 return m[1].strip("\"'")
@@ -499,6 +545,16 @@ def ask(body, key, timeout):
         raise Invalid("oversize_api_response")
     result = json.loads(raw)
     judgment = validate(result, body.get("state", {}).get("event"))
+    if "target_goal" in body["questions"]:
+        answer = result["answers"]["target_goal"]
+        choices = set(body["questions"]["target_goal"]["criteria"])
+        probabilities = answer.get("probabilities", {})
+        if (answer.get("type") != "choice" or answer.get("choice") not in choices
+                or set(probabilities) != choices or not all(probability(v) for v in probabilities.values())
+                or abs(sum(probabilities.values()) - 1) > .02 or not probability(answer.get("confidence"))
+                or probabilities[answer["choice"]] < max(probabilities.values()) - 1e-6):
+            raise Invalid("invalid_target_goal")
+        judgment.update(target_goal=answer["choice"], target_confidence=answer["confidence"])
     usage = {k: v for k, v in result.get("usage", {}).items()
              if k in ("input_tokens", "output_tokens") and type(v) is int and v >= 0}
     return judgment, {"latency_ms": round((time.monotonic() - start) * 1000),
@@ -649,6 +705,16 @@ def notice(root, state, view, why):
 
 
 def handle(event, root, cfg=None, ask_fn=ask, now=None):
+    cfg = cfg or config(root)
+    if cfg.get("automatic_goals", True):
+        spec = importlib.util.spec_from_file_location("north_star_automatic", Path(__file__).with_name("automatic.py"))
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module.handle(SimpleNamespace(**globals()), event, root, cfg, ask_fn, now)
+    return legacy_handle(event, root, cfg, ask_fn, now)
+
+
+def legacy_handle(event, root, cfg=None, ask_fn=ask, now=None):
     now = time.time() if now is None else now
     cfg = cfg or config(root)
     if cfg["mode"] == "off":
@@ -791,18 +857,21 @@ def handle(event, root, cfg=None, ask_fn=ask, now=None):
 
 
 def update_anchor(store, expected, patch, roots):
+    roots = [*roots, str(store.directory / "sources")]
     with store.lock():
         state = store.read()
         if state["anchor_version"] != expected:
             raise Invalid("anchor_version_conflict")
-        if not isinstance(patch, dict) or set(patch) - {"nodes", "active"}:
+        if not isinstance(patch, dict) or set(patch) - {"nodes", "active", "review_recovery"}:
             raise Invalid("invalid_anchor_patch")
         nodes = copy.deepcopy(state["nodes"])
         for change in patch.get("nodes", []):
             if not re.fullmatch(r"[a-zA-Z0-9_-]{1,48}", change.get("id", "")):
                 raise Invalid("invalid_goal_id")
-            if set(change) - {"id", "parent", "goal", "refs", "result_refs", "done_when", "constraints", "status", "completed", "remaining"}:
+            if set(change) - {"id", "parent", "goal", "refs", "result_refs", "done_when", "constraints", "status", "completed", "remaining", "automatic_source"}:
                 raise Invalid("unknown_goal_field")
+            if "automatic_source" in change and type(change["automatic_source"]) is not bool:
+                raise Invalid("invalid_source_marker")
             prior = next((x for x in nodes if x["id"] == change["id"]), {})
             node = {**prior, **change}
             if not isinstance(node.get("goal"), str) or not 1 <= len(node["goal"]) <= 300:
@@ -843,13 +912,75 @@ def update_anchor(store, expected, patch, roots):
         active = patch.get("active", state["active"])
         if active not in ids:
             raise Invalid("missing_active_goal")
+        reviewed = None
+        if "review_recovery" in patch:
+            recovery = state.get("recovery") or {}
+            observation = recovery.get("execution_observation") or {}
+            selected = next(n for n in nodes if n["id"] == active)
+            result = observation.get("intent_ref")
+            if (not recovery or patch["review_recovery"] != recovery.get("observation_hash")
+                    or recovery.get("goal") != active or active != state["active"]
+                    or not selected.get("completed") or not result
+                    or result not in selected.get("result_refs", [])):
+                raise Invalid("recovery_review_requires_observed_execution")
+            if read_ref(result, store.sid, roots)["role"] != "assistant":
+                raise Invalid("recovery_review_requires_assistant_result")
+            reviewed = {**recovery, "status": "agent_reviewed_execution", "confirmed_at": time.time(),
+                        "provenance": "Codex local source/effect review plus observed successful tool; not a Jev verdict"}
         # Archive each previous semantic version locally, never silently discard goal revisions.
         atomic(store.directory / "history" / f"{state['anchor_version']:06d}.json",
                {"active": state["active"], "nodes": state["nodes"], "version": state["anchor_version"]})
         state.update(nodes=nodes, active=active, anchor_version=expected + 1, revision=state["revision"] + 1)
         state["pending_report"] = None
+        if reviewed:
+            state.update(last_recovery=reviewed, recovery=None,
+                         health={"status": "recovery_reviewed", "at": time.time()})
+            store.audit("local_recovery_review", status="agent_reviewed_execution",
+                        anchor_version=state["anchor_version"], tool_hash=reviewed["execution_observation"]["tool_hash"])
         store.save(state)
         return state
+
+
+def verify_execution(store, expected, recovery_hash, receipt_id, command, roots, timeout=60):
+    """Run an already-authorized local check and record its real process exit code."""
+    if (not re.fullmatch(r"[a-f0-9]{32}", receipt_id) or not command
+            or any(not isinstance(x, str) or not x for x in command)):
+        raise Invalid("invalid_execution_receipt_request")
+    with store.lock():
+        state = store.read()
+        recovery = state.get("recovery") or {}
+        if (state["anchor_version"] != expected or recovery.get("observation_hash") != recovery_hash
+                or recovery.get("goal") != state["active"]):
+            raise Invalid("execution_receipt_context_changed")
+        source = transcript(state.get("canonical_transcript", ""), store.sid, roots)
+        rows, _ = recent(source, store.sid, 8)
+        assistant = next((r for r in reversed(rows) if r["role"] == "assistant"), None)
+        if not assistant:
+            raise Invalid("execution_receipt_needs_current_intent")
+        recovery.pop("verified_execution", None)
+        recovery.pop("execution_observation", None)
+        store.save(state)
+    try:
+        completed = subprocess.run(command, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        raise Invalid("execution_receipt_timed_out") from None
+    if completed.returncode != 0:
+        return completed.returncode
+    with store.lock():
+        latest = store.read()
+        pending = latest.get("recovery") or {}
+        if (latest["anchor_version"] != expected or pending.get("observation_hash") != recovery_hash
+                or latest["active"] != state["active"]):
+            raise Invalid("execution_receipt_context_changed")
+        now = time.time()
+        pending["execution_observation"] = {"intent_ref": assistant["ref"], "at": now,
+            "tool_hash": digest([receipt_id, command]), "source": "local_process_receipt"}
+        pending["verified_execution"] = {"id": receipt_id, "exit_code": 0, "at": now,
+            "anchor_version": expected, "command_sha256": digest(command)}
+        store.save(latest)
+        store.audit("execution_receipt", status="local_process_exited_zero", receipt_id=receipt_id,
+                    command_sha256=digest(command), anchor_version=expected)
+    return 0
 
 
 def main():
@@ -867,6 +998,12 @@ def main():
     anchor.add_argument("--input", type=Path, required=True)
     status = sub.add_parser("status")
     status.add_argument("--thread", required=True)
+    verify = sub.add_parser("verify-execution")
+    verify.add_argument("--thread", required=True)
+    verify.add_argument("--expected-version", type=int, required=True)
+    verify.add_argument("--recovery", required=True)
+    verify.add_argument("--receipt", required=True)
+    verify.add_argument("--command", dest="check_command", nargs=argparse.REMAINDER, required=True)
     args = parser.parse_args()
     try:
         cfg = config(args.root)
@@ -887,6 +1024,7 @@ def main():
             pass
         return 0
     if args.command == "inspect":
+        roots = [*roots, str(args.root / "threads" / thread_id(args.thread) / "sources")]
         p = transcript(args.transcript, args.thread, roots)
         if args.line:
             with p.open("rb") as f:
@@ -903,10 +1041,13 @@ def main():
     elif args.command == "anchor":
         if args.input.stat().st_size > MAX_STATE_BYTES:
             raise Invalid("oversize_anchor_patch")
-        state = update_anchor(Store(args.root, args.thread), args.expected_version, json.loads(args.input.read_text()), roots)
+        state = update_anchor(Store(args.root, args.thread), args.expected_version, json.loads(args.input.read_text(encoding="utf-8-sig")), roots)
         print(dump({"thread": args.thread, "anchor_version": state["anchor_version"], "active": state["active"]}))
     elif args.command == "status":
         print(dump(Store(args.root, args.thread).read()))
+    elif args.command == "verify-execution":
+        return verify_execution(Store(args.root, args.thread), args.expected_version, args.recovery,
+                                args.receipt, args.check_command, roots)
     return 0
 
 
