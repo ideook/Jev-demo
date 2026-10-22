@@ -27,19 +27,6 @@
             "additionalContextLimit": 1500
           }
         ]
-      },
-      {
-        "matcher": "^Bash$",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "\"<PYTHON>\" \"<CODEX_HOME>/skills/jev-explore/scripts/jev_explore_hook.py\"",
-            "commandWindows": "\"<PYTHON>\" \"<CODEX_HOME>/skills/jev-explore/scripts/jev_explore_hook.py\"",
-            "timeout": 5,
-            "statusMessage": "Jev Explore: source reading priorities",
-            "additionalContextLimit": 1200
-          }
-        ]
       }
     ]
   }

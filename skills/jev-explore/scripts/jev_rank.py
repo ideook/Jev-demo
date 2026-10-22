@@ -276,14 +276,29 @@ def display(report: dict, path: Path) -> None:
     print(f"Jev Explore: {report['status']}; {report['candidate_count']} candidates; {report['api_calls']} API calls; {report['elapsed_ms'] / 1000:.2f}s")
     if report.get("message"):
         print(report["message"])
+    if report["ranked"]:
+        print("Jev Explore reading priorities:")
+    stale = False
     for row in report["ranked"][:report["top"]]:
-        location = (Path(report["root"]) / row["path"]).as_posix()
-        print(f"  {row['score']:.3f}  {location}:{row['line']}  confidence={row['confidence']:.2f}")
+        source = Path(report["root"]) / row["path"]
+        try:
+            stat = source.stat()
+        except OSError:
+            stale = True
+            continue
+        if stat.st_size != row["size"] or stat.st_mtime_ns != row["mtime_ns"]:
+            stale = True
+            continue
+        print(f"  {row['score']:.3f}  {source.as_posix()}:{row['line']}  confidence={row['confidence']:.2f}")
+    if stale:
+        print("Some ranked files changed after evaluation; rerun exploration for fresh priorities.")
     if report["lexical_suggestions"]:
         print("Lexical suggestions only (not Jev judgments):")
         for row in report["lexical_suggestions"][:report["top"]]:
             print(f"  {(Path(report['root']) / row['path']).as_posix()}:{row['line']}")
-    print("Ranks prioritize reading within this shortlist; verify behavior in source.")
+    if report.get("shortlist_truncated") or report.get("lexical_scan_truncated"):
+        print("Candidate discovery was capped; broaden the search if the listed files do not answer the question.")
+    print("Read the listed source files first, then trace references as needed. These ranks guide reading; they do not establish implementation facts.")
     print(f"JEV_EXPLORE_RESULT={path}")
 
 

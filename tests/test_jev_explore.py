@@ -1,5 +1,9 @@
 import importlib.util
+import contextlib
+import io
 import json
+import subprocess
+import sys
 from pathlib import Path
 import tempfile
 import unittest
@@ -33,6 +37,57 @@ def answer(score=3, confidence=1):
 
 
 class ExploreTests(unittest.TestCase):
+    def test_dry_run_with_unicode_space_and_quote_paths_needs_no_hook_or_credentials(self):
+        with tempfile.TemporaryDirectory(dir=ROOT / ".cache") as tmp:
+            root = Path(tmp) / "한글 user's source"
+            root.mkdir()
+            (root / "급여.py").write_text("def employee_pay(): return 42\n", encoding="utf-8")
+            result = subprocess.run([sys.executable, "-X", "utf8", str(SCRIPTS / "jev_rank.py"),
+                "Where is employee pay?", "--root", str(root), "--keyword", "employee_pay", "--dry-run"],
+                capture_output=True, text=True, encoding="utf-8", timeout=30)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("급여.py:1", result.stdout)
+            self.assertIn("0 API calls", result.stdout)
+            self.assertIn("Lexical suggestions only", result.stdout)
+            cached = Path(result.stdout.split("JEV_EXPLORE_RESULT=", 1)[1].strip())
+            self.assertFalse(cached.with_suffix(".hook.json").exists())
+            cached.unlink()
+
+    def test_changed_files_and_capped_discovery_remain_visible_in_direct_output(self):
+        with tempfile.TemporaryDirectory(dir=ROOT / ".cache") as tmp:
+            root = Path(tmp)
+            source = root / "feature.py"
+            source.write_text("employee_pay = 42\n")
+            row = candidate() | {"score": 1, "confidence": 1, "size": source.stat().st_size,
+                                 "mtime_ns": source.stat().st_mtime_ns}
+            report = {"status": "ok", "root": str(root), "candidate_count": 1, "api_calls": 1,
+                      "elapsed_ms": 0, "top": 5, "ranked": [row], "lexical_suggestions": [], "shortlist_truncated": True}
+            source.write_text("changed after ranking\n")
+            with contextlib.redirect_stdout(io.StringIO()) as stdout:
+                rank.display(report, root / "report.json")
+            self.assertIn("changed after evaluation", stdout.getvalue())
+            self.assertIn("Candidate discovery was capped", stdout.getvalue())
+            self.assertNotIn("feature.py:1", stdout.getvalue())
+
+    def test_rank_command_delivers_reading_context_without_a_hook_or_extra_api(self):
+        with tempfile.TemporaryDirectory(dir=ROOT / ".cache") as tmp:
+            root = Path(tmp).resolve()
+            (root / "feature.py").write_text("def employee_pay(): return 42\n")
+            argv = ["jev_rank.py", "Where is employee pay implemented?", "--root", str(root), "--keyword", "employee_pay"]
+            with patch.object(rank.sys, "argv", argv), patch.object(rank, "credential", return_value="synthetic-key"), \
+                    patch.object(rank.urllib.request, "urlopen") as api, contextlib.redirect_stdout(io.StringIO()) as stdout:
+                api.return_value.__enter__.return_value.read.return_value = json.dumps(answer()).encode()
+                self.assertEqual(rank.main(), 0)
+            self.assertEqual(api.call_count, 1)
+            output = stdout.getvalue()
+            self.assertIn("feature.py:1", output)
+            self.assertIn("Read the listed source files first", output)
+            marker = output.split("JEV_EXPLORE_RESULT=", 1)[1].strip()
+            cached = Path(marker)
+            self.assertTrue(cached.is_file())
+            self.assertFalse(cached.with_suffix(".hook.json").exists())
+            cached.unlink()
+
     def test_local_search_excludes_credentials_vendor_and_external_symlinks(self):
         with tempfile.TemporaryDirectory(dir=ROOT / ".cache") as tmp:
             root = Path(tmp).resolve()

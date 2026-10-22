@@ -23,7 +23,7 @@ Jev / TypeSafe를 시험하는 여러 프로젝트, 설치용 코드, 테스트�
 | Path | Contents |
 | --- | --- |
 | `skills/typesafe-ai/` | TypeSafe skill for composing Choice, Score, and Noul judgments; upstream MIT license included |
-| `skills/jev-explore/` | ripgrep discovery, Jev file ranking, and a hook that returns the completed shortlist as context |
+| `skills/jev-explore/` | On-demand ripgrep discovery and Jev file ranking, with reading priorities in the command output |
 | `hooks/jev-hook-demo/` | PostToolUse coverage judge, four synthetic access rules, and executable policy tests |
 | `hooks/hooks.example.json` | Hook registration template with portable path placeholders |
 | `hooks/jev-skill-pick/` | UserPromptSubmit hook: Jev recommends one enabled Codex skill, or none |
@@ -50,6 +50,7 @@ Jev / TypeSafe를 시험하는 여러 프로젝트, 설치용 코드, 테스트�
 python3 scripts/register_jev_skill_pick.py --codex-home .runtime/experiments/skill-pick/codex-home
 python3 scripts/install_jev_belay.py --codex-home .runtime/experiments/belay/codex-home
 python3 scripts/install_north_star.py --codex-home .runtime/experiments/north-star/codex-home
+python3 scripts/install_jev_explore.py --codex-home .runtime/experiments/explore/codex-home
 ```
 
 위 명령은 샌드박스에 설치 파일을 준비하며 외부 평가 전송은 기본적으로 비활성화됩니다.
@@ -79,10 +80,12 @@ North Star의 목표 계층·주제 전환·보고 누락 검사와 검증 한�
 
 Use Python 3.12+ and install [ripgrep](https://github.com/BurntSushi/ripgrep). The skills and hook scripts use the Python standard library.
 
-Install the exploration skill and register its hook from the repository root:
+Install the exploration skill from the repository root. For an existing installation,
+inspect local changes first, then use `--update` to back up and replace managed files:
 
 ```powershell
 python scripts/install_jev_explore.py
+python scripts/install_jev_explore.py --update
 ```
 
 To use the general TypeSafe skill, copy `skills/typesafe-ai` into your Codex skills directory (`$CODEX_HOME/skills`, or `~/.codex/skills` when `CODEX_HOME` is unset). Both skill directories can also be copied manually.
@@ -93,17 +96,29 @@ Optionally register the synthetic coverage judge:
 python scripts/register_jev_hook.py
 ```
 
-The scripts merge their own hook definitions into `$CODEX_HOME/hooks.json` (default `~/.codex/hooks.json`), preserve unrelated hooks, and refuse conflicting registrations or exploration skill files. They write installation records under the ignored `.runtime/` directory. Keep this checkout available while the judge hook is registered: its command points to `hooks/jev-hook-demo/jev_judge_hook.py` here.
+Explore delivers reading priorities directly in `jev_rank.py` output. Its installer
+removes the old per-shell Explore callback from `$CODEX_HOME/hooks.json` (default
+`~/.codex/hooks.json`), preserving unrelated definitions. Changed existing files and
+registrations are backed up under `$CODEX_HOME/backups/jev-explore/`; installation
+records go under the ignored `.runtime/` directory. A fresh installation registers
+no Explore hook. Migration keeps the old group as an empty slot because native
+trust keys include group indexes; following hooks keep their original keys.
+The old handler remains in this checkout for compatibility tests.
+Keep this checkout available while the optional judge hook is registered: its
+command points to `hooks/jev-hook-demo/jev_judge_hook.py` here.
 
-Inspect and enable/trust the registrations in the Codex client's hook interface where supported. Automatic hook dispatch depends on the client and its tool names; the registrations use `^Bash$` for exploration and `^apply_patch$` for the judge. Handler contract tests alone do not establish automatic dispatch in a desktop chat.
+Inspect and enable/trust new judge registrations in Codex where supported. Its
+matcher is `^apply_patch$`. Hook matchers select tool names, so a shell matcher
+cannot restrict dispatch to exploration commands. Explore requires no hook trust.
+Handler contract tests alone do not establish automatic dispatch in a desktop chat.
 
 Run exploration from a target repository, using the installed skill path or this checkout's absolute script path:
 
 ```powershell
-python "<REPO>/skills/jev-explore/scripts/jev_rank.py" "Where do employees see their pay?" --root . --keyword payroll --keyword payslip --top 5 --dry-run
+python -X utf8 "<REPO>/skills/jev-explore/scripts/jev_rank.py" "Where do employees see their pay?" --root . --keyword payroll --keyword payslip --top 5 --dry-run
 ```
 
-Remove `--dry-run` to request Jev rankings. Credentials come from `JEV_API_KEY` or `TYPESAFE_API_KEY` in the process environment, the target repository's `.env`, or the Windows user environment. Source excerpts go to the TypeSafe API during ranking. The exploration hook reads that completed report and makes no additional API calls.
+Remove `--dry-run` to request Jev rankings. Credentials come from `JEV_API_KEY` or `TYPESAFE_API_KEY` in the process environment, the target repository's `.env`, or the Windows user environment. Source excerpts go to the TypeSafe API during ranking. Reading priorities are printed in the same command, without another process or API call. The [on-demand verification record](experiments/jev-explore-on-demand-20261022/README.md) covers the Windows timeout fix and global migration.
 
 The judge only evaluates edits to its own `rules.md`, `access_control.py`, and `test_access_control.py`. It asks one Noul question per access rule about executable test coverage, then returns additional context. Its example thresholds are 0.8 for covered and 0.2 for missing; intermediate answers need review. Execute the policy tests separately. A direct live evaluation is available through:
 
