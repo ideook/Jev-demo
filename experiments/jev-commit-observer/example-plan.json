@@ -1,0 +1,10 @@
+{
+  "title": "음수 수량 입력 거부",
+  "message": "fix: reject negative quantities",
+  "acceptance": [
+    "수량이 음수이면 ValueError를 발생시킨다.",
+    "0 이상 수량의 기존 곱셈 결과를 유지한다."
+  ],
+  "files": ["pricing.py", "test_pricing.py"],
+  "checks": [["{python}", "-B", "-m", "unittest", "test_pricing", "-v"]]
+}

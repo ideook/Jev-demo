@@ -30,6 +30,7 @@ Jev / TypeSafe를 시험하는 여러 프로젝트, 설치용 코드, 테스트�
 | `hooks/jev-belay/` | Codex Stop adapter, completion-check tests, and vendored upstream Jev Belay source |
 | `hooks/north-star/`, `skills/north-star/` | Thread-local source-backed goals and conditional Jev continuity/report checks |
 | `experiments/north-star/` | Reusable continuity evaluation cases and installation/verification results |
+| `experiments/jev-commit-observer/` | 작업 단위별 커밋 후보를 기록하는 관찰기. 실제 Git 쓰기 없이 검사 결과와 Jev 판단을 비교 |
 | `scripts/` | Skill installation, hook registration, and a synthetic 35-file exploration fixture generator |
 | `tests/` | Offline contracts for ranking, credential handling, response validation, and hook scope |
 | `jev-ultrafast/` | Browser agent source, inspector, examples, tests, and upstream documentation |
@@ -77,6 +78,11 @@ OS별 차이는 필요한 부분만 분리하고, 변경 시 두 환경의 동�
 
 North Star의 목표 계층·주제 전환·보고 누락 검사와 검증 한계는
 [실험 기록](experiments/north-star/README.md)을 참고하세요.
+
+작업 단위 자동 커밋의 첫 단계인 [커밋 관찰기](experiments/jev-commit-observer/README.md)는
+등록한 단위의 실제 검사 뒤 후보 파일·메시지·보류 사유를 기록합니다.
+기본은 외부 호출 없는 관찰이며, `--live --allow-diff-export`를 함께 지정해야 Jev에
+단위 설명·후보 diff·검사 상태를 전송합니다. 전역 훅 설치나 실제 커밋은 수행하지 않습니다.
 
 Use Python 3.12+ and install [ripgrep](https://github.com/BurntSushi/ripgrep). The skills and hook scripts use the Python standard library.
 
